@@ -41,7 +41,37 @@ no.addEventListener('pointerenter',e=>{if(e.pointerType==='mouse')dodge()});
 no.addEventListener('pointerdown',e=>{e.preventDefault();dodge()});
 no.addEventListener('click',e=>{e.preventDefault();if(e.detail===0)dodge()});
 function heart(){const h=document.createElement('span');h.className='confetti';h.textContent=Math.random()>.3?'♥':'♥';h.setAttribute('aria-hidden','true');h.style.cssText=`--x:${Math.random()*100}%;--size:${12+Math.random()*22}px;--speed:${4+Math.random()*4}s;--drift:${Math.random()*130-65}px;--color:${['#ed9db9','#e8b0c4','#ffffff','#a9cddb'][Math.floor(Math.random()*4)]}`;document.body.appendChild(h);h.addEventListener('animationend',()=>h.remove());setTimeout(()=>h.remove(),9000)}
-yes.addEventListener('click',()=>{accepted=true;const round=++celebration;ask.hidden=true;success.hidden=false;document.getElementById('happy').focus({preventScroll:true});if(!matchMedia('(prefers-reduced-motion: reduce)').matches){for(let i=0;i<18;i++)setTimeout(()=>{if(celebration===round)heart()},i*80);heartsTimer=setInterval(heart,400);setTimeout(()=>{if(celebration===round){clearInterval(heartsTimer);heartsTimer=null}},15000)}});
+// Send only the acceptance event; LINE credentials stay on the server.
+let lineNotification=null;
+async function notifyAcceptance(){
+ if(location.protocol!=='https:' && location.protocol!=='http:')return;
+ if(lineNotification?.sent || lineNotification?.pending)return;
+ if(!lineNotification){
+  try{lineNotification=JSON.parse(sessionStorage.getItem('axolotl-line-acceptance')||'null')}catch{}
+  if(!lineNotification?.eventId)lineNotification={eventId:crypto.randomUUID(),acceptedAt:new Date().toISOString(),sent:false};
+ }
+ if(lineNotification.sent)return;
+ if(!lineNotification.acceptedAt)lineNotification.acceptedAt=new Date().toISOString();
+ lineNotification.pending=true;
+ try{sessionStorage.setItem('axolotl-line-acceptance',JSON.stringify({eventId:lineNotification.eventId,acceptedAt:lineNotification.acceptedAt,sent:false}))}catch{}
+ try{
+  for(let attempt=0;attempt<3;attempt++){
+   const controller=new AbortController();
+   const timeout=setTimeout(()=>controller.abort(),12000);
+   let retryDelay=1000*(attempt+1);
+   try{
+    const result=await fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({event:'accepted',eventId:lineNotification.eventId,acceptedAt:lineNotification.acceptedAt}),keepalive:true,signal:controller.signal});
+    if(result.ok){lineNotification.sent=true;try{sessionStorage.setItem('axolotl-line-acceptance',JSON.stringify({eventId:lineNotification.eventId,acceptedAt:lineNotification.acceptedAt,sent:true}))}catch{}return}
+    if(result.status<500 && result.status!==429){if(result.status!==403)console.warn('LINE notification unavailable; HTTP status:',result.status);return}
+    if(result.status===429)retryDelay=60000;
+   }catch{ /* Retry using the same event ID, without interrupting the letter. */ }
+   finally{clearTimeout(timeout)}
+   if(attempt<2)await new Promise(resolve=>setTimeout(resolve,retryDelay));
+  }
+  console.warn('LINE notification could not be confirmed.');
+ }finally{lineNotification.pending=false}
+}
+yes.addEventListener('click',()=>{void notifyAcceptance();accepted=true;const round=++celebration;ask.hidden=true;success.hidden=false;document.getElementById('happy').focus({preventScroll:true});if(!matchMedia('(prefers-reduced-motion: reduce)').matches){for(let i=0;i<18;i++)setTimeout(()=>{if(celebration===round)heart()},i*80);heartsTimer=setInterval(heart,400);setTimeout(()=>{if(celebration===round){clearInterval(heartsTimer);heartsTimer=null}},15000)}});
 const keepHeart=document.getElementById('again');
 const heartSvg='<svg viewBox="0 0 32 30" aria-hidden="true"><path fill="currentColor" d="M16 28S1 18.5 1 9C1 1 11-1 16 6 21-1 31 1 31 9c0 9.5-15 19-15 19Z"/></svg>';
 let bursting=false;
