@@ -13,7 +13,7 @@ export function buildLoveCard(siteUrl, now = new Date()) {
   }).format(now);
   return {
     type: 'flex',
-    altText: `💗 มีคนกด “ตกลง” ในจดหมายของเธอแล้ว! ${time} น.`,
+    altText: `💗 มีคนกด “ลองคุยกันนะ” แล้ว! ${time} น.`,
     contents: {
       type: 'bubble', size: 'mega',
       hero: {
@@ -25,8 +25,8 @@ export function buildLoveCard(siteUrl, now = new Date()) {
         backgroundColor: '#FFFCF5',
         contents: [
           { type: 'text', text: 'A LITTLE LOVE UPDATE', size: 'xxs', color: '#B96C8B' },
-          { type: 'text', text: 'เขากด “ตกลง” แล้ว! 💗', size: 'lg', weight: 'bold', color: '#514D59', wrap: true },
-          { type: 'text', text: 'เจ้าสองตัวมีข่าวดีมาบอก\nมีคนตอบรับความในใจของเธอแล้วนะ', size: 'sm', color: '#887684', wrap: true },
+          { type: 'text', text: 'มีคนกด “ลองคุยกันนะ” 💗', size: 'lg', weight: 'bold', color: '#514D59', wrap: true },
+          { type: 'text', text: 'เจ้าสองตัวมีข่าวดีมาบอก\nมีคนตอบรับจดหมายแล้วนะ', size: 'sm', color: '#887684', wrap: true },
           {
             type: 'box', layout: 'vertical', backgroundColor: '#FFF0F6',
             cornerRadius: '10px', paddingAll: '12px',
@@ -41,7 +41,8 @@ export function buildLoveCard(siteUrl, now = new Date()) {
   };
 }
 
-// The token and recipient are read exclusively from Cloudflare runtime secrets.
+// The token is read exclusively from Cloudflare runtime secrets.
+// Broadcasts go to all current friends of this LINE Official Account.
 export async function onRequest({ request, env }) {
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { Allow: 'POST' });
   const url = new URL(request.url);
@@ -69,7 +70,7 @@ export async function onRequest({ request, env }) {
   if (!Number.isFinite(age) || age < -300000 || age > 23 * 60 * 60 * 1000) {
     return json({ error: 'invalid_event_time' }, 400);
   }
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN || !/^U[0-9a-f]{32}$/i.test(env.LINE_USER_ID || '')) {
+  if (!env.LINE_CHANNEL_ACCESS_TOKEN) {
     return json({ error: 'line_not_configured' }, 503);
   }
 
@@ -88,7 +89,7 @@ export async function onRequest({ request, env }) {
     }
   }
   try {
-    const result = await fetch('https://api.line.me/v2/bot/message/push', {
+    const result = await fetch('https://api.line.me/v2/bot/message/broadcast', {
       method: 'POST', signal: AbortSignal.timeout(10000),
       headers: {
         'Content-Type': 'application/json',
@@ -96,7 +97,7 @@ export async function onRequest({ request, env }) {
         // LINE deduplicates retries of the same event across server locations.
         'X-Line-Retry-Key': input.eventId,
       },
-      body: JSON.stringify({ to: env.LINE_USER_ID, messages: [buildLoveCard(siteUrl.href, acceptedAt)] }),
+      body: JSON.stringify({ messages: [buildLoveCard(siteUrl.href, acceptedAt)] }),
     });
     // A 409 with this header means LINE already accepted the same retry key.
     const duplicate = result.status === 409 && result.headers.has('x-line-accepted-request-id');
